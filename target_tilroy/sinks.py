@@ -53,12 +53,7 @@ class PurchaseOrderSink(TilroySink):
         if requested_delivery_date:
             payload["requestedDeliveryDate"] = requested_delivery_date
 
-        # supplierReference - use supplier_remoteId or supplier_reference
-        supplier_ref = record.get("supplier_reference") or record.get("supplier_remoteId")
-        if supplier_ref:
-            payload["supplierReference"] = str(supplier_ref)
-
-        # supplier tilroyId check
+        # supplier tilroyId - Tilroy internal supplier identifier (required)
         if record.get("supplier_remoteId"):
             payload["supplier"] = {"tilroyId": record.get("supplier_remoteId")}
         else:
