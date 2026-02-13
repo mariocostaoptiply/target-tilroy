@@ -36,37 +36,22 @@ class PurchaseOrderSink(TilroySink):
             except:
                 pass
             
-        requested_delivery_date = record.get("delivery_date")
+        requested_delivery_date = record.get("created_date")
         if isinstance(requested_delivery_date, datetime):
             requested_delivery_date = requested_delivery_date.strftime("%Y-%m-%d")
         elif isinstance(requested_delivery_date, str):
-            # Handle ISO format dates
             try:
                 if 'T' in requested_delivery_date:
                     requested_delivery_date = requested_delivery_date.split('T')[0]
-                else:
-                    requested_delivery_date = requested_delivery_date
             except:
                 pass
 
         payload = {
             "orderDate": order_date,
         }
-        
-        # Set requestedDeliveryDate - use provided date or default to 30 days from order date
+
         if requested_delivery_date:
             payload["requestedDeliveryDate"] = requested_delivery_date
-        else:
-            # Default to 30 days from order date
-            from datetime import timedelta
-            if order_date:
-                order_dt = datetime.strptime(order_date, "%Y-%m-%d")
-                default_delivery = order_dt + timedelta(days=30)
-                payload["requestedDeliveryDate"] = default_delivery.strftime("%Y-%m-%d")
-            else:
-                # Fallback to current date + 30 days
-                default_delivery = datetime.now() + timedelta(days=30)
-                payload["requestedDeliveryDate"] = default_delivery.strftime("%Y-%m-%d")
 
         # supplierReference - use supplier_remoteId or supplier_reference
         supplier_ref = record.get("supplier_reference") or record.get("supplier_remoteId")
