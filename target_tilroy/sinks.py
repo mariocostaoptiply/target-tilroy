@@ -51,9 +51,9 @@ class PurchaseOrderSink(TilroySink):
         if requested_delivery_date:
             payload["requestedDeliveryDate"] = requested_delivery_date
 
-        # supplier.tilroyId from customer_id (ETL renames supplierId -> customer_id)
-        if record.get("customer_id"):
-            payload["supplier"] = {"tilroyId": record.get("customer_id")}
+        # supplier.tilroyId from customer_id (ETL renames supplierId -> customer_id); API requires string
+        if record.get("customer_id") is not None:
+            payload["supplier"] = {"tilroyId": str(record["customer_id"])}
         else:
             self.logger.info(
                 f"Skipping order {record.get('id')} because customer_id is missing"
@@ -99,7 +99,7 @@ class PurchaseOrderSink(TilroySink):
     def upsert_record(self, record: dict, context: dict) -> None:
         """Send purchase order to Tilroy API."""
         import requests
-        
+
         if record:
             # Construct and log the full URL
             full_url = f"{self.base_url}{self.endpoint}"
