@@ -36,36 +36,34 @@ class PurchaseOrderSink(TilroySink):
             except:
                 pass
             
-        requested_delivery_date = record.get("created_date")
+        # requestedDeliveryDate from BuyOrder created_at (keep ISO date-time like data.singer)
+        requested_delivery_date = record.get("created_at")
         if isinstance(requested_delivery_date, datetime):
-            requested_delivery_date = requested_delivery_date.strftime("%Y-%m-%d")
-        elif isinstance(requested_delivery_date, str):
-            try:
-                if 'T' in requested_delivery_date:
-                    requested_delivery_date = requested_delivery_date.split('T')[0]
-            except:
-                pass
+            requested_delivery_date = requested_delivery_date.strftime("%Y-%m-%dT%H:%M:%S.000000Z")
+        # if str, pass through as-is (e.g. "2026-03-01T00:00:00.000000Z")
 
         payload = {
             "orderDate": order_date,
         }
+        if record.get("id") is not None:
+            payload["supplierReference"] = str(record["id"])
 
         if requested_delivery_date:
             payload["requestedDeliveryDate"] = requested_delivery_date
 
-        # supplier tilroyId - Tilroy internal supplier identifier (required)
-        if record.get("supplier_remoteId"):
-            payload["supplier"] = {"tilroyId": record.get("supplier_remoteId")}
+        # supplier.tilroyId from customer_id (ETL renames supplierId -> customer_id)
+        if record.get("customer_id"):
+            payload["supplier"] = {"tilroyId": record.get("customer_id")}
         else:
             self.logger.info(
-                f"Skipping order {record.get('id')} because supplier_remoteId is missing"
+                f"Skipping order {record.get('id')} because customer_id is missing"
             )
             return None
 
-        # process items (lines) - handle both "items" and "line_items" fields
-        items = record.get("items", [])
+        # lines from line_items (fallback to "items" for backward compat)
+        items = record.get("line_items", [])
         if not items:
-            items = record.get("line_items", [])
+            items = record.get("items", [])
         
         if isinstance(items, str):
             items = self.parse_objs(items)
@@ -75,21 +73,18 @@ class PurchaseOrderSink(TilroySink):
             return None
 
         payload["lines"] = []
+        order_delivery_date = payload.get("requestedDeliveryDate")  # BuyOrder created_at
         for item in items:
             transformed_item = {
-                "status": item.get("status", "open"),  # Default status if not provided
+                "status": "open",
                 "sku": {"tilroyId": str(item.get("product_remoteId"))},
                 "qty": {"ordered": item.get("quantity")},
-                "warehouse": {"number": int(self.config.get("warehouse_id"))}
+                "warehouse": {"number": int(self.config.get("warehouse_id"))},
             }
-            
-            # Set requestedDeliveryDate for line item - use provided date or default to order's delivery date
-            if item.get("delivery_date"):
-                transformed_item["requestedDeliveryDate"] = item.get("delivery_date")
-            else:
-                # Use the order's requestedDeliveryDate as default
-                transformed_item["requestedDeliveryDate"] = payload.get("requestedDeliveryDate")
-                
+            line_delivery = item.get("delivery_date") or order_delivery_date
+            if line_delivery:
+                transformed_item["requestedDeliveryDate"] = line_delivery
+
             payload["lines"].append(transformed_item)
 
         return payload
@@ -123,7 +118,7 @@ class PurchaseOrderSink(TilroySink):
                 # Log response details for debugging
                 self.logger.info(f"Response status: {response.status_code}")
                 
-                if response.status_code == 200:
+                if response.status_code in (200, 201):
                     res_json_id = response.json().get("supplierReference")
                     self.logger.info(f"{self.name} created in Tilroy with ID: {res_json_id}")
                 elif response.status_code == 500:
