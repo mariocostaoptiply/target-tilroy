@@ -51,12 +51,12 @@ class PurchaseOrderSink(TilroySink):
         if requested_delivery_date:
             payload["requestedDeliveryDate"] = requested_delivery_date
 
-        # supplier.tilroyId from customer_id (ETL renames supplierId -> customer_id); API requires string
-        if record.get("customer_id") is not None:
-            payload["supplier"] = {"tilroyId": str(record["customer_id"])}
+        # supplier.tilroyId from supplier_remoteId; API requires string
+        if record.get("supplier_remoteId") is not None:
+            payload["supplier"] = {"tilroyId": str(record["supplier_remoteId"])}
         else:
             self.logger.info(
-                f"Skipping order {record.get('id')} because customer_id is missing"
+                f"Skipping order {record.get('id')} because supplier_remoteId is missing"
             )
             return None
 
@@ -121,19 +121,6 @@ class PurchaseOrderSink(TilroySink):
                 if response.status_code in (200, 201):
                     res_json_id = response.json().get("supplierReference")
                     self.logger.info(f"{self.name} created in Tilroy with ID: {res_json_id}")
-                elif response.status_code == 500:
-                    # Handle specific 500 errors
-                    try:
-                        error_data = response.json()
-                        if "supplier" in error_data.get("message", "").lower() and "not found" in error_data.get("message", "").lower():
-                            self.logger.warning(f"Skipping order - supplier not found in Tilroy: {error_data.get('message')}")
-                            return  # Skip this order instead of failing
-                        else:
-                            self.logger.error(f"API error response: {response.text}")
-                            response.raise_for_status()
-                    except:
-                        self.logger.error(f"API error response: {response.text}")
-                        response.raise_for_status()
                 else:
                     self.logger.error(f"API error response: {response.text}")
                     response.raise_for_status()
