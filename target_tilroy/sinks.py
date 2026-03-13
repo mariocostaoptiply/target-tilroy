@@ -126,10 +126,13 @@ class PurchaseOrderSink(TilroySink):
                     response.raise_for_status()
                 
             except requests.exceptions.RequestException as e:
-                self.logger.error(f"API request failed: {e}")
+                order_id = record.get("supplierReference", "unknown")
+                self.logger.error(f"API request failed for BuyOrder {order_id}: {e}")
                 if hasattr(e, 'response') and e.response is not None:
                     self.logger.error(f"Error response: {e.response.text}")
-                raise
+                raise requests.exceptions.HTTPError(
+                    f"BuyOrder {order_id}: {e}", response=getattr(e, 'response', None)
+                ) from e
     
     def process_batch(self, context: Dict[str, Any]) -> None:
         """Process any remaining records in the batch."""
